@@ -12,7 +12,7 @@ def process_tickets_file(input_file, output_file):
     """
     print("Iniciando el procesamiento del archivo de tickets...")
 
-    # --- Carga de Modelos de IA ---
+    # ---- Carga de Modelos de IA ----
     device = 0 if torch.cuda.is_available() else -1
     print(f"Dispositivo detectado: {'GPU' if device == 0 else 'CPU'}")
 
