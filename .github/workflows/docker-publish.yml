@@ -3,10 +3,10 @@
 name: Build and Push Docker Image to Docker Hub
 
 # Define el evento que dispara este workflow.
-# En este caso, se ejecutará cada vez que se haga un 'push' a la rama 'master'.
+# En este caso, se ejecutará cada vez que se haga un 'push' a la rama 'qa'.
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "qa" ]
 
 jobs:
   build-and-push:

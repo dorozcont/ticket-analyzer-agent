@@ -3,6 +3,6 @@
 echo "Iniciando el microagente de resumen de incidentes..."
 
 # Comando para iniciar la aplicación Python
-python app.py
+python process_tickets.py
 
-echo "Microagente iniciado. ¡Accede a la interfaz web!"
+echo "Microagente iniciado. Inicia proceso de analítica de tickets."
