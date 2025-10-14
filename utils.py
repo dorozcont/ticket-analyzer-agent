@@ -12,7 +12,7 @@ def group_entities(ner_results):
         entity = result['entity']
         word = result['word']
         
-        # Si la entidad empieza con B- (Beginning), empezamos una nueva entidad
+        # Si la entidad empieza con B- (Beginning), empezamos una nueva entidad.
         if entity.startswith('B-'):
             # Si ya teníamos una entidad, la guardamos
             if current_entity:
