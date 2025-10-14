@@ -16,7 +16,7 @@ def process_tickets_file(input_file, output_file):
     device = 0 if torch.cuda.is_available() else -1
     print(f"Dispositivo detectado: {'GPU' if device == 0 else 'CPU'}")
 
-    # 1. Modelo de Clasificación Zero-Shot.
+    # 1. Modelo de Clasificación Zero-Shot
     print("Cargando el modelo de Clasificación...")
     classifier = pipeline(
         "zero-shot-classification",
