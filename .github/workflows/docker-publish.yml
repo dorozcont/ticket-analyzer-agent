@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Permisos para escribir en el repositorio
-      
+
     steps:
       # 1. Clonar el repositorio
       # Este paso descarga tu código fuente en la máquina virtual para que el workflow pueda acceder a él.
@@ -46,4 +46,4 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/ticket-analyzer:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/ticket-analyzer:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/ticket-analyzer:${{ github.ref_name }}
