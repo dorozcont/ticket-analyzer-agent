@@ -6,13 +6,17 @@ name: Build and Push Docker Image to Docker Hub
 # En este caso, se ejecutará cada vez que se haga un 'push' a la rama 'qa'.
 on:
   push:
-    branches: [ "qa" ]
+    # Este workflow se activará solo cuando se cree un nuevo tag (ej. v1.0.1)
+    tags:
+      - 'v*.*.*'
 
 jobs:
   build-and-push:
     # El tipo de máquina virtual en la que se ejecutará el job.
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write # Permisos para escribir en el repositorio
+      
     steps:
       # 1. Clonar el repositorio
       # Este paso descarga tu código fuente en la máquina virtual para que el workflow pueda acceder a él.
