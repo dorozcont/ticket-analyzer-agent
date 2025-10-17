@@ -10,17 +10,17 @@ git fetch origin --tags
 echo "=== FASE 1: CREACIÓN DE NUEVO RELEASE EN 'qa' ==="
 
 # 1) Detectar cambios
-CHANGED=$(git status --short | awk '{print $2}')
+CHANGED=$(git status --short)
 if [ -z "$CHANGED" ]; then
   echo "⚠️ No hay cambios detectados para el commit."
-  # Añadimos un paso para preguntar si desea saltarse el commit y pasar a Prod
   read -rp "❓ ¿Desea continuar e intentar promocionar la ÚLTIMA versión de 'qa' a 'prod'? (y/n): " SKIP_COMMIT
   if [ "$SKIP_COMMIT" = "y" ]; then
     COMMIT_MSG="[Salto de commit]"
-    BASE_TAG=$(git describe --tags --abbrev=0 origin/qa 2>/qa/null || echo "v1.0.0")
+    # --- LÍNEA CORREGIDA ---
+    # Busca la última etiqueta en todo el repositorio, la ordena y selecciona la más reciente.
+    BASE_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1)
     NEW_TAG=$BASE_TAG
     echo "Saltando commit. La versión a promocionar será $BASE_TAG."
-    # Ir directamente a la fase de promoción
     goto_promotion=true
   else
     echo "❌ Operación cancelada."
@@ -32,8 +32,13 @@ if [ -z "$goto_promotion" ]; then
   # 2) Mensaje de commit
   read -rp "📝 Escribe el mensaje de commit para 'qa': " COMMIT_MSG
 
-  # 3) Tomar la ÚLTIMA versión estable desde la rama de desarrollo.
-  BASE_TAG=$(git describe --tags --abbrev=0 origin/qa 2>/qa/null || echo "v1.0.0")
+  # 3) --- LÍNEA CORREGIDA ---
+  # Obtiene la última etiqueta de forma fiable, listando y ordenando todas las existentes.
+  BASE_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1)
+  if [ -z "$BASE_TAG" ]; then
+    # Si no hay ninguna etiqueta en el repositorio, empezamos en v1.0.0
+    BASE_TAG="v1.0.0"
+  fi
   BASE_NUM=${BASE_TAG#v}
   IFS='.' read -r MAJOR MINOR PATCH <<<"$BASE_NUM"
 
@@ -97,10 +102,6 @@ if [ -z "$goto_promotion" ]; then
   echo ""
 fi
 
-# ---
-## ---
-## ---
-
 # ----------------------------------------------------
 # FASE 2: PROMOCIÓN DE 'qa' A 'prod'
 # ----------------------------------------------------
@@ -109,41 +110,25 @@ read -rp "⭐ ¿Desea promocionar la versión $NEW_TAG (de 'qa') a la rama 'prod
 
 if [ "$PROMOTE_PROD" = "y" ]; then
     echo "Procesando promoción de $NEW_TAG a 'prod'..."
-
-    # Asegura estar en 'qa' para el merge y tener las últimas versiones
     git checkout qa
     git pull origin qa
-
-    # 1) Checkout a prod
     git checkout prod
-
-    # 2) Pull para tener la última versión de prod (fundamental para evitar conflictos)
     git pull origin prod
 
-    # 3) Merge de qa a prod
     if git merge --no-ff qa -m "Merge branch 'qa' for Production Release $NEW_TAG"; then
         echo "✅ Merge de 'qa' a 'prod' completado."
 
-        # 4) Crear un tag de producción (opcional, pero buena práctica)
         PROD_TAG="prod-$NEW_TAG"
-        
         echo "   Nuevo tag de Producción: $PROD_TAG"
         git tag "$PROD_TAG"
-
-        # 5) Push a prod y el nuevo tag de producción
         git push origin prod
         git push origin "$PROD_TAG"
-
         echo "🎉 ¡Éxito! La versión $NEW_TAG ha sido promocionada a 'prod' y etiquetada como $PROD_TAG."
     else
         echo "❌ Falló el merge de 'qa' a 'prod'. Revise y resuelva los conflictos manualmente."
-        # Deja al usuario en la rama 'prod' para resolver el conflicto
         exit 1
     fi
-
-    # 6) Volver a la rama 'qa' (por si acaso)
     git checkout qa
-
 else
     echo "▶️ No se solicitó la promoción a 'prod'. Proceso de release finalizado en 'qa'."
 fi
