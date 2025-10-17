@@ -4,16 +4,8 @@ from transformers import pipeline
 from tqdm import tqdm
 import torch
 import argparse
-from utils import get_asset_from_ticket, get_text_for_classification
-
-# --- FUNCIÓN AUXILIAR PARA PROCESAMIENTO POR LOTES ---
-# Modificamos esta función para que acepte el pipeline como argumento
-def extract_asset_from_batch(row, ner_results_map):
-    """
-    Busca el resultado del NER pre-calculado para una fila específica.
-    """
-    # Usamos el índice de la fila para buscar su resultado en el mapa
-    return ner_results_map.get(row.name, "No identificado")
+# Se importa la nueva función de RegEx
+from utils import find_asset_with_regex, get_text_for_classification
 
 def process_tickets_file(input_file, output_file):
     print("Iniciando el procesamiento del archivo de tickets...")
@@ -21,71 +13,85 @@ def process_tickets_file(input_file, output_file):
     device = 0 if torch.cuda.is_available() else -1
     print(f"Dispositivo detectado: {'GPU' if device == 0 else 'CPU'}")
 
+    # ... Carga de modelos (sin cambios) ...
     print("Cargando el modelo de Clasificación...")
     classifier = pipeline("zero-shot-classification", model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli", device=device)
-    
     print("Cargando el modelo NER para extracción de activos...")
     ner_pipeline = pipeline("ner", model="Davlan/bert-base-multilingual-cased-ner-hrl", device=device)
-    
     ticket_categories = ["Redes / Conectividad / Seguridad", "Servidores", "Aplicaciones", "Nube", "Correo"]
     
     print(f"Leyendo el archivo completo: {input_file}...")
-    try:
-        df_full = pd.read_excel(input_file, engine='openpyxl')
-        print(f"Archivo leído correctamente en memoria. {len(df_full)} filas a procesar.")
-    except Exception as e:
-        print(f"Error crítico al leer el archivo Excel: {e}")
-        exit()
+    df_full = pd.read_excel(input_file, engine='openpyxl')
+    print(f"Archivo leído. {len(df_full)} filas a procesar.")
 
-    # --- PROCESAMIENTO POR LOTES PARA EXTRACCIÓN DE ACTIVOS (OPTIMIZADO) ---
-    print("Extrayendo activos (procesamiento por lotes)...")
-    # 1. Creamos la lista de textos a procesar, siguiendo la misma lógica de prioridad
-    texts_for_ner = []
-    for index, row in df_full.iterrows():
-        asunto = row.get('asunto', '') or ''
-        descripcion = row.get('descripción', '') or ''
-        cierre = row.get('cierresolicitud', '') or ''
-        # Concatenamos todo para darle el máximo contexto al modelo NER
-        texts_for_ner.append(f"{asunto} | {descripcion} | {cierre}")
+    # --- FASE 1: EXTRACCIÓN DE ACTIVOS CON REGEX (RÁPIDO) ---
+    print("\n--- Fase 1: Extrayendo activos con RegEx... ---")
+    
+    def get_text_for_ner(row):
+        # Función para obtener el texto completo para el análisis
+        asunto = str(row.get('asunto', ''))
+        descripcion = str(row.get('descripción', ''))
+        cierre = str(row.get('cierresolicitud', ''))
+        return f"{asunto} | {descripcion} | {cierre}"
 
-    # 2. Pasamos la lista completa al pipeline del NER
-    # El batch_size le dice al pipeline cuántos textos procesar a la vez en la GPU
-    ner_results_list = ner_pipeline(texts_for_ner, batch_size=16)
-
-    # 3. Procesamos los resultados para extraer solo la primera entidad (el activo)
-    final_assets = []
-    for result_group in tqdm(ner_results_list, desc="Procesando resultados NER"):
-        asset = "No identificado"
-        # La salida del pipeline puede ser una lista de entidades para cada texto
-        if result_group:
-            # Agrupamos las entidades fragmentadas (ej: 'srv', '-', 'web')
-            grouped_entities = []
-            current_entity = ""
-            for entity_dict in result_group:
-                word = entity_dict['word']
-                if entity_dict['entity'].startswith('B-'):
-                    if current_entity: grouped_entities.append(current_entity)
-                    current_entity = word.replace("##", "")
-                elif entity_dict['entity'].startswith('I-') and current_entity:
-                    current_entity += word.replace("##", "")
-            if current_entity: grouped_entities.append(current_entity)
-
-            if grouped_entities:
-                asset = grouped_entities[0] # Nos quedamos con la primera entidad encontrada
-        final_assets.append(asset)
+    df_full['full_text'] = df_full.apply(get_text_for_ner, axis=1)
+    df_full['Activo_Identificado'] = df_full['full_text'].apply(find_asset_with_regex)
+    
+    # --- FASE 2: EXTRACCIÓN CON IA PARA LOS CASOS FALTANTES ---
+    # Seleccionamos solo las filas donde RegEx no encontró nada
+    missing_assets_df = df_full[df_full['Activo_Identificado'].isna()].copy()
+    
+    if not missing_assets_df.empty:
+        print(f"\n--- Fase 2: RegEx no encontró activos en {len(missing_assets_df)} filas. Usando IA como respaldo... ---")
         
-    df_full['Activo_Identificado'] = final_assets
+        texts_for_ner = missing_assets_df['full_text'].tolist()
+        
+        print("Enviando lote a la GPU para procesamiento NER... (Puede tardar)")
+        ner_results_list = ner_pipeline(texts_for_ner, batch_size=16)
+        print("Procesamiento NER completado. Analizando resultados...")
 
-    # --- PROCESAMIENTO POR LOTES PARA CLASIFICACIÓN ---
-    print("Clasificando tickets (procesamiento por lotes)...")
-    texts_to_classify = df_full.apply(get_text_for_classification, axis=1).tolist()
+        assets_from_ner = []
+        for result_group in tqdm(ner_results_list, desc="Post-procesando resultados NER"):
+            asset = "No identificado"
+            if result_group:
+                # Lógica para agrupar entidades fragmentadas (B-ORG, I-ORG, etc.)
+                grouped_entities = []
+                current_entity = ""
+                for entity_dict in result_group:
+                    entity_type = entity_dict['entity']
+                    if entity_type.startswith('B-'):
+                        if current_entity: grouped_entities.append(current_entity)
+                        current_entity = entity_dict['word'].replace("##", "")
+                    elif entity_type.startswith('I-') and current_entity:
+                        current_entity += entity_dict['word'].replace("##", "")
+                if current_entity: grouped_entities.append(current_entity)
+                
+                # Seleccionamos la primera entidad encontrada como el activo
+                if grouped_entities: asset = grouped_entities[0]
+            assets_from_ner.append(asset)
+        
+        # Actualizamos el DataFrame principal con los resultados de la IA
+        missing_assets_df['Activo_Identificado'] = assets_from_ner
+        df_full.update(missing_assets_df)
+    else:
+        print("\n--- Fase 2: RegEx encontró activos en todas las filas. ¡Excelente! ---")
+
+    # --- FASE 3: CLASIFICACIÓN DE TICKETS (SIN CAMBIOS) ---
+    print("\n--- Fase 3: Clasificando tickets... ---")
+    df_full['text_for_classification'] = df_full.apply(get_text_for_classification, axis=1)
+    texts_to_classify = df_full['text_for_classification'].tolist()
+
     classification_results = classifier(texts_to_classify, ticket_categories, multi_label=False, batch_size=16)
     df_full['Categoria_Ticket'] = [result['labels'][0] for result in classification_results]
     
-    print("Guardando el archivo final...")
+    # Limpieza de columnas auxiliares antes de guardar
+    df_full.drop(columns=['full_text', 'text_for_classification'], inplace=True)
+
+    print("\nGuardando el archivo final...")
     df_full.to_excel(output_file, index=False)
     
     print(f"✅ ¡Proceso completado! Archivo guardado en: {output_file}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Procesador de Tickets de Mesa de Servicio con IA.")
