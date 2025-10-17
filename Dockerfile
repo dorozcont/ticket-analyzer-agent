@@ -1,5 +1,5 @@
 # Usa una imagen base de Python con PyTorch, que ya incluye CUDA para aceleración por GPU
-FROM python:3.10-bullseye
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
 
 # Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app

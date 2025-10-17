@@ -1,10 +1,6 @@
+# requirements.txt
 numpy<2.0
-# Versiones fijas para estabilidad
 pandas==2.2.0
 openpyxl==3.1.2
 tqdm==4.66.1
 transformers==4.30.0
-
-# PyTorch (versión para CPU, ya que la imagen base no tiene CUDA)
-# La URL asegura que se instale una versión compatible
-torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
