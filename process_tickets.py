@@ -39,6 +39,8 @@ def process_tickets_file(input_file, output_file):
     final_df_chunks = []
 
     print(f"Leyendo y procesando el archivo: {input_file}")
+
+    excel_iterator = pd.read_excel(input_file, chunksize=chunk_size, engine='openpyxl')
     
     for chunk in tqdm(pd.read_excel(input_file, chunksize=chunk_size), desc="Procesando Lotes"):
         # 1. Extracción de Activos con el modelo NER
