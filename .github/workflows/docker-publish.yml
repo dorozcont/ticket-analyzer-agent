@@ -1,0 +1,49 @@
+# .github/workflows/docker-publish.yml
+
+name: Build and Push Docker Image to Docker Hub
+
+# Define el evento que dispara este workflow.
+# En este caso, se ejecutará cada vez que se haga un 'push' a la rama 'qa'.
+on:
+  push:
+    # Este workflow se activará solo cuando se cree un nuevo tag (ej. v1.0.1)
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-push:
+    # El tipo de máquina virtual en la que se ejecutará el job.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Permisos para escribir en el repositorio
+
+    steps:
+      # 1. Clonar el repositorio
+      # Este paso descarga tu código fuente en la máquina virtual para que el workflow pueda acceder a él.
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Iniciar sesión en Docker Hub
+      # Utiliza los secretos que configurarás en GitHub para autenticarse de forma segura.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 3. Construir y etiquetar la imagen de Docker
+      # Este paso ejecuta el comando 'docker build'.
+      # - 'file': Especifica la ruta a tu Dockerfile.
+      # - 'push': Indica que la imagen debe ser subida al registro después de construirla.
+      # - 'tags': Asigna etiquetas a la imagen.
+      #      - La primera etiqueta usa el nombre de tu repositorio y la etiqueta 'latest'.
+      #      - La segunda etiqueta es más específica y usa el hash del commit, lo que la hace única para cada versión.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ticket-analyzer:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/ticket-analyzer:${{ github.ref_name }}
