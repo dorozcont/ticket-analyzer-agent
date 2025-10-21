@@ -4,14 +4,17 @@ from transformers import pipeline
 from tqdm import tqdm
 import torch
 import argparse
-# Se importa la nueva función de RegEx
 from utils import find_asset_with_regex, get_text_for_classification
 import warnings
+import time  # <--- NUEVO: Importar time
+import numpy as np # <--- NUEVO: Importar numpy
 
-# Suprimir advertencias futuras de Pandas y HuggingFace (opcional, para limpieza de log)
+# Suprimir advertencias futuras (limpieza de log)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def process_tickets_file(input_file, output_file):
+    start_time = time.time() # <--- NUEVO: Iniciar contador de tiempo
+    
     print("Iniciando el procesamiento del archivo de tickets...")
 
     device = 0 if torch.cuda.is_available() else -1
@@ -21,7 +24,6 @@ def process_tickets_file(input_file, output_file):
     print("Cargando el modelo de Clasificación...")
     classifier = pipeline("zero-shot-classification", model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli", device=device)
     print("Cargando el modelo NER para extracción de activos...")
-    # Usamos "aggregation_strategy=simple" para que el modelo agrupe entidades (ej. "Alejandro", "Javier" -> "Alejandro Javier")
     ner_pipeline = pipeline("ner", model="Davlan/bert-base-multilingual-cased-ner-hrl", device=device, aggregation_strategy="simple")
     
     ticket_categories = ["Redes / Conectividad / Seguridad", "Servidores", "Aplicaciones", "Nube", "Correo"]
@@ -30,21 +32,29 @@ def process_tickets_file(input_file, output_file):
     df_full = pd.read_excel(input_file, engine='openpyxl')
     print(f"Archivo leído. {len(df_full)} filas a procesar.")
 
+    # --- NUEVO: Inicializar columnas de resultados ---
+    df_full['Activo_Identificado'] = np.nan
+    df_full['Metodo_Deteccion'] = np.nan
+
     # --- FASE 1: EXTRACCIÓN DE ACTIVOS CON REGEX (RÁPIDO) ---
     print("\n--- Fase 1: Extrayendo activos con RegEx... ---")
     
     def get_text_for_ner(row):
-        # Función para obtener el texto completo para el análisis
         asunto = str(row.get('asunto', ''))
         descripcion = str(row.get('descripción', ''))
         cierre = str(row.get('cierresolicitud', ''))
         return f"{asunto} | {descripcion} | {cierre}"
 
     df_full['full_text'] = df_full.apply(get_text_for_ner, axis=1)
+    
+    # Aplicar RegEx
     df_full['Activo_Identificado'] = df_full['full_text'].apply(find_asset_with_regex)
     
+    # --- NUEVO: Marcar las filas encontradas por RegEx ---
+    regex_found_mask = df_full['Activo_Identificado'].notna()
+    df_full.loc[regex_found_mask, 'Metodo_Deteccion'] = 'RegEx'
+    
     # --- FASE 2: EXTRACCIÓN CON IA PARA LOS CASOS FALTANTES ---
-    # Seleccionamos solo las filas donde RegEx no encontró nada (NaN/None)
     missing_assets_mask = df_full['Activo_Identificado'].isna()
     missing_assets_df = df_full[missing_assets_mask].copy()
     
@@ -54,42 +64,38 @@ def process_tickets_file(input_file, output_file):
         texts_for_ner = missing_assets_df['full_text'].tolist()
         
         print("Enviando lote a la GPU para procesamiento NER... (Puede tardar)")
-        # El batch_size=8 es un buen equilibrio para la GPU
         ner_results_list = ner_pipeline(texts_for_ner, batch_size=8)
         print("Procesamiento NER completado. Analizando resultados...")
 
         assets_from_ner = []
         
-        # Usamos tqdm para ver el progreso del post-procesamiento
         for result_group in tqdm(ner_results_list, desc="Post-procesando resultados NER"):
-            asset = "No identificado"
+            asset = np.nan # Usamos NaN por defecto
             
-            # ======== INICIO DE LÓGICA DE FILTRADO DE IA ========
-            # Iteramos sobre las entidades encontradas (ej. [{'entity_group': 'PER', 'word': 'Alejandro...'}, {'entity_group': 'ORG', 'word': '...'}])
-            
-            # 1. Filtramos para quedarnos SÓLO con ORG (Organización) o MISC (Misceláneo)
+            # Filtramos para quedarnos SÓLO con ORG (Organización) o MISC (Misceláneo)
             valid_entities = [
                 entity['word'] for entity in result_group 
                 if entity['entity_group'] in ['ORG', 'MISC']
             ]
             
-            # 2. Si encontramos entidades válidas, tomamos la primera
             if valid_entities:
                 asset = valid_entities[0]
-            # Si no hay entidades ORG o MISC, 'asset' permanecerá como "No identificado"
-            # Esto evita que se seleccionen nombres de personas (PER) o lugares (LOC).
-            # ======== FIN DE LÓGICA DE FILTRADO DE IA ========
             
             assets_from_ner.append(asset)
         
         # Actualizamos el DataFrame principal con los resultados de la IA
-        # Usamos .loc para asignar los valores de vuelta al DataFrame original
         df_full.loc[missing_assets_mask, 'Activo_Identificado'] = assets_from_ner
+        
+        # --- NUEVO: Marcar las filas encontradas por NER ---
+        ner_found_mask = missing_assets_mask & df_full['Activo_Identificado'].notna()
+        df_full.loc[ner_found_mask, 'Metodo_Deteccion'] = 'NER'
+        
     else:
         print("\n--- Fase 2: RegEx encontró activos en todas las filas. ¡Excelente! ---")
 
-    # Rellenamos cualquier NaN restante (si RegEx falló y la IA también)
+    # Rellenamos cualquier NaN restante
     df_full['Activo_Identificado'].fillna("No identificado", inplace=True)
+    df_full['Metodo_Deteccion'].fillna("No Identificado", inplace=True)
 
     # --- FASE 3: CLASIFICACIÓN DE TICKETS (SIN CAMBIOS) ---
     print("\n--- Fase 3: Clasificando tickets... ---")
@@ -106,6 +112,10 @@ def process_tickets_file(input_file, output_file):
     print("\nGuardando el archivo final...")
     df_full.to_excel(output_file, index=False)
     
+    end_time = time.time() # <--- NUEVO: Finalizar contador de tiempo
+    total_time = end_time - start_time
+    
+    print(f"\n--- TIEMPO TOTAL DE EJECUCIÓN: {total_time:.2f} segundos ---") # <--- NUEVO: Imprimir tiempo
     print(f"✅ ¡Proceso completado! Archivo guardado en: {output_file}")
 
 

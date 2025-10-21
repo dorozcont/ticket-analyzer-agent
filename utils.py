@@ -2,11 +2,13 @@
 import re
 
 # Lista de patrones RegEx, ordenados de más específico a más general.
-# Son extensibles: puedes añadir más patrones según tus necesidades.
 ASSET_PATTERNS = [
-    # --- 1. Patrones de Monitoreo y Servidores (Alta Prioridad) ---
-    
-    # Ej: "Servidor T8tldm0209", "MonitorT7LDM02", "Host: abcexaprod01"
+    # --- 1. Patrones de Monitoreo Específicos (Prioridad Más Alta) ---
+
+    # Ej: "Site24x7 CRITICAL QR5-MAS-FW-01" -> Captura "QR5-MAS-FW-01"
+    re.compile(r'Site24x7\s+(?:DOWN|CRITICAL|TROUBLE|UP)\s+([a-zA-Z0-9\._/:-]+)', re.IGNORECASE),
+
+    # Ej: "PROSA alerta de informacion Crítico para Servidor T8tldm0209"
     re.compile(r'\b(?:Servidor|Monitor|Host):\s+([a-zA-Z0-9\._-]+)\b', re.IGNORECASE),
 
     # Ej: "Status_DB_PDBOTOOL2_2024-01-11_08:00" -> Captura "PDBOTOOL2"
@@ -15,24 +17,10 @@ ASSET_PATTERNS = [
     # Ej: "Name DB: PDBOECMC"
     re.compile(r'\bName DB:\s+([a-zA-Z0-9\._-]+)\b', re.IGNORECASE),
     
-    # Ej: "WIN-54FQ4PQ3M5Q" (de alertas Velocity)
-    re.compile(r'\b(WIN-[\w\d]{10,})\b'),
+    # Ej: "Nombre: gemweb4"
+    re.compile(r'Nombre:\s+([a-zA-Z0-9\._/:-]+(?:\.[a-zA-Z]{2,})?(?:[/\w\.-]*)*)'),
 
-    # --- 2. Patrones de Hardware y Seriales (Alta Prioridad) ---
-
-    # Ej: "IMPRESORADELL2335DN...", "LAP TOPLENOVOL490PF..."
-    re.compile(r'\b((?:DELL|HP|LENOVO|IMPRESORA|LAPTOP)[\w\d-]{10,})\b', re.IGNORECASE),
-    
-    # Ej: "HP 840 G4", "DELL E7490"
-    re.compile(r'\b((?:HP|DELL)\s+[A-Z0-9 ]{3,12})\b', re.IGNORECASE),
-
-    # --- 3. Patrones de Nomenclatura Estándar ---
-
-    # Ej: "MEXZAPATANRH1" (combinación de letras y números, min 6 caracteres)
-    re.compile(r'\b([a-zA-Z]{2,}[0-9]{1,}[a-zA-Z0-9]+|[a-zA-Z]+[0-9]{1,}[a-zA-Z]{2,})[0-9]{1,}\b'),
-    
-    # Ej: "SvrMgMA(10.99.29.42)" -> captura "SvrMgMA"
-    re.compile(r'\b([a-zA-Z0-9\._-]{5,})\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\)'),
+    # --- 2. Patrones de Nomenclatura Específicos (Nombres con guiones, FQDN) ---
 
     # Ej: "QR5-MAS-FW-01" (Debe empezar con letras y tener guiones)
     re.compile(r'\b([a-zA-Z]{2,}[0-9]?-[\w-]{3,})\b'),
@@ -40,8 +28,26 @@ ASSET_PATTERNS = [
     # Ej: FQDN como "mexzapatatest.fordzapata.com.mx"
     re.compile(r'\b([a-zA-Z0-9\._-]{4,}\.[a-zA-Z0-9\._-]+\.[a-zA-Z\.]{2,}(?:[/\w\.-]*)*)\b'),
 
-    # --- 4. Patrones Genéricos (Baja Prioridad) ---
+    # Ej: "SvrMgMA(10.99.29.42)" -> captura "SvrMgMA"
+    re.compile(r'\b([a-zA-Z0-9\._-]{5,})\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\)'),
     
+    # --- 3. Patrones de Hardware y Seriales ---
+
+    # Ej: "IMPRESORADELL2335DN...", "LAP TOPLENOVOL490PF..."
+    re.compile(r'\b((?:DELL|HP|LENOVO|IMPRESORA|LAPTOP)[\w\d-]{10,})\b', re.IGNORECASE),
+    
+    # Ej: "HP 840 G4", "DELL E7490"
+    re.compile(r'\b((?:HP|DELL)\s+[A-Z0-9 ]{3,12})\b', re.IGNORECASE),
+
+    # --- 4. Patrones Genéricos (Prioridad Baja - Causante del error anterior) ---
+
+    # Ej: "WIN-54FQ4PQ3M5Q" (de alertas Velocity)
+    re.compile(r'\b(WIN-[\w\d]{10,})\b'),
+
+    # Ej: "MEXZAPATANRH1" (combinación de letras y números, min 6 caracteres)
+    # Movida al final porque es muy genérica y capturaba "Site24x7"
+    re.compile(r'\b([a-zA-Z]{2,}[0-9]{1,}[a-zA-Z0-9]+|[a-zA-Z]+[0-9]{1,}[a-zA-Z]{2,})[0-9]{1,}\b'),
+
     # Ej: Palabras clave como "NIMSOFT", "WEBLOGIC", "PDBOECMC"
     re.compile(r'\b(NIMSOFT|WEBLOGIC|ORACLE|PDB[A-Z0-9]+)\b', re.IGNORECASE),
 
@@ -61,7 +67,6 @@ def find_asset_with_regex(text):
         match = pattern.search(text)
         if match:
             # Devuelve el primer grupo capturado en la coincidencia
-            # .strip() elimina espacios en blanco al inicio o final
             return match.group(1).strip()
             
     return None # No se encontró ninguna coincidencia
