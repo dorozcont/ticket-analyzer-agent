@@ -29,10 +29,10 @@ def process_tickets_file(input_file, output_file):
     
     def get_text_for_ner(row):
         # Función para obtener el texto completo para el análisis
-        asunto = str(row.get('asunto', ''))
         descripcion = str(row.get('descripción', ''))
+        asunto = str(row.get('asunto', ''))
         cierre = str(row.get('cierresolicitud', ''))
-        return f"{asunto} | {descripcion} | {cierre}"
+        return f"{descripcion} | {asunto} | {cierre}"
 
     df_full['full_text'] = df_full.apply(get_text_for_ner, axis=1)
     df_full['Activo_Identificado'] = df_full['full_text'].apply(find_asset_with_regex)
