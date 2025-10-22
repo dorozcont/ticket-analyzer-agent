@@ -155,7 +155,7 @@ def process_tickets_file(input_file, output_file):
     
     tqdm.pandas(desc="Clasificando Tipo de CI")
     
-    # Usamos axis=1 para pasar la fila completa (con Categoria_Ticket y full_text)
+    # Usamos axis=1 para pasar la fila completa (con Categoria_Ticket y full_text).
     df_full['Tipo_CI'] = df_full.progress_apply(
         lambda row: classify_ci_type(row, keywords),
         axis=1
