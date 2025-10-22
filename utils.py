@@ -3,10 +3,17 @@ import re
 
 # Lista de patrones RegEx, ordenados de más específico a más general.
 ASSET_PATTERNS = [
-    # --- 1. Patrones de Monitoreo Específicos (Prioridad Más Alta) ---
+    # --- 1. Patrones Específicos (Prioridad Más Alta) ---
+
+    # Ej: "PROSA T8tldm0111 (192.168.107.21)" -> Captura "T8tldm0111"
+    # ¡MOVIDA AL INICIO! Esta regla es la más fiable para este formato.
+    re.compile(r'\b([a-zA-Z0-9\._-]{5,})\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\)'), 
 
     # Ej: "Site24x7 CRITICAL QR5-MAS-FW-01" -> Captura "QR5-MAS-FW-01"
     re.compile(r'Site24x7\s+(?:DOWN|CRITICAL|TROUBLE|UP)\s+([a-zA-Z0-9\._/:-]+)', re.IGNORECASE),
+
+    # Ej: "URL_CFDI33_FACEMASNEGOCIO($HOSTIP)" -> Captura "URL_CFDI33_FACEMASNEGOCIO"
+    re.compile(r'\b(URL_[A-Z0-9_]+)\b'),
 
     # Ej: "PROSA alerta de informacion Crítico para Servidor T8tldm0209"
     re.compile(r'\b(?:Servidor|Monitor|Host):\s+([a-zA-Z0-9\._-]+)\b', re.IGNORECASE),
@@ -20,48 +27,27 @@ ASSET_PATTERNS = [
     # Ej: "Nombre: gemweb4"
     re.compile(r'Nombre:\s+([a-zA-Z0-9\._/:-]+(?:\.[a-zA-Z]{2,})?(?:[/\w\.-]*)*)'),
 
-    # --- 2. Patrones de Nomenclatura Específicos (Nombres con guiones, FQDN) ---
-
-    # Ej: "QR5-MAS-FW-01" (Debe empezar con letras y tener guiones)
-    re.compile(r'\b([a-zA-Z]{2,}[0-9]?-[\w-]{3,})\b'),
+    # --- 2. Patrones de Nomenclatura (Guiones, FQDN) ---
 
     # Ej: "S6509-B-CORE-SF" o "QR5-MAS-FW-01"
-    # Busca (letras/números) + (guion) + (3 o más letras/números/guiones)
-    re.compile(r'\b([a-zA-Z0-9]+-[a-zA-Z0-9-]{3,})\b'),
+    # MODIFICADA: Ahora requiere que la primera parte contenga al menos una letra.
+    # Esto evita que coincida con "2024-01-08".
+    re.compile(r'\b([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*-[a-zA-Z0-9-]{3,})\b'),
 
     # Ej: FQDN como "mexzapatatest.fordzapata.com.mx"
     re.compile(r'\b([a-zA-Z0-9\._-]{4,}\.[a-zA-Z0-9\._-]+\.[a-zA-Z\.]{2,}(?:[/\w\.-]*)*)\b'),
-
-    # Ej: "SvrMgMA(10.99.29.42)" -> captura "SvrMgMA"
-    re.compile(r'\b([a-zA-Z0-9\._-]{5,})\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\)'),
     
     # --- 3. Patrones de Hardware y Seriales ---
-
-    # Ej: "IMPRESORADELL2335DN...", "LAP TOPLENOVOL490PF..."
     re.compile(r'\b((?:DELL|HP|LENOVO|IMPRESORA|LAPTOP)[\w\d-]{10,})\b', re.IGNORECASE),
-    
-    # Ej: "HP 840 G4", "DELL E7490"
     re.compile(r'\b((?:HP|DELL)\s+[A-Z0-9 ]{3,12})\b', re.IGNORECASE),
 
     # --- 4. Patrones Genéricos (Prioridad Baja) ---
-
-    # Ej: "WIN-54FQ4PQ3M5Q" (de alertas Velocity)
     re.compile(r'\b(WIN-[\w\d]{10,})\b'),
-
-    # Ej: "MEXZAPATANRH1" (combinación de letras y números, min 6 caracteres)
-    # Movida al final porque es muy genérica y capturaba "Site24x7"
     re.compile(r'\b([a-zA-Z]{2,}[0-9]{1,}[a-zA-Z0-9]+|[a-zA-Z]+[0-9]{1,}[a-zA-Z]{2,})[0-9]{1,}\b'),
-
-    # Ej: Palabras clave como "NIMSOFT", "WEBLOGIC", "PDBOECMC"
     re.compile(r'\b(NIMSOFT|WEBLOGIC|ORACLE|PDB[A-Z0-9]+)\b', re.IGNORECASE),
-
-    # Ej: "...occurred on spectrumpm3"
     re.compile(r'\b(?:on|en)\s+([a-zA-Z0-9\._-]{6,})\b', re.IGNORECASE),
 
-    # Ej: "URL_CFDI33_FACEMASNEGOCIO($HOSTIP)" -> Captura "URL_CFDI33_FACEMASNEGOCIO"
-    re.compile(r'\b(URL_[A-Z0-9_]+)\b'),
-
-    # Ej: "Punto Clave Querétaro_A (10.253.2.3)" -> Captura "10.253.2.3"
+    # --- 5. Patrón de Último Recurso (Captura IPs si todo lo demás falla) ---
     re.compile(r'\b((?:\d{1,3}\.){3}\d{1,3})\b')
 ]
 
