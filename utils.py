@@ -6,7 +6,7 @@ ASSET_PATTERNS = [
     # --- 1. Patrones Específicos (Prioridad Más Alta) ---
 
     # Ej: "PROSA T8tldm0111 (192.168.107.21)" -> Captura "T8tldm0111"
-    # ¡MOVIDA AL INICIO! Esta regla es la más fiable para este formato.
+    # ¡MOVIDA AL INICIO! Esta regla es la más fiable para este formato..
     re.compile(r'\b([a-zA-Z0-9\._-]{5,})\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\)'), 
 
     # Ej: "Site24x7 CRITICAL QR5-MAS-FW-01" -> Captura "QR5-MAS-FW-01"
