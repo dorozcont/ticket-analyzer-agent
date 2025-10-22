@@ -25,6 +25,10 @@ ASSET_PATTERNS = [
     # Ej: "QR5-MAS-FW-01" (Debe empezar con letras y tener guiones)
     re.compile(r'\b([a-zA-Z]{2,}[0-9]?-[\w-]{3,})\b'),
 
+    # Ej: "S6509-B-CORE-SF" o "QR5-MAS-FW-01"
+    # Busca (letras/números) + (guion) + (3 o más letras/números/guiones)
+    re.compile(r'\b([a-zA-Z0-9]+-[a-zA-Z0-9-]{3,})\b'),
+
     # Ej: FQDN como "mexzapatatest.fordzapata.com.mx"
     re.compile(r'\b([a-zA-Z0-9\._-]{4,}\.[a-zA-Z0-9\._-]+\.[a-zA-Z\.]{2,}(?:[/\w\.-]*)*)\b'),
 
@@ -39,7 +43,7 @@ ASSET_PATTERNS = [
     # Ej: "HP 840 G4", "DELL E7490"
     re.compile(r'\b((?:HP|DELL)\s+[A-Z0-9 ]{3,12})\b', re.IGNORECASE),
 
-    # --- 4. Patrones Genéricos (Prioridad Baja - Causante del error anterior) ---
+    # --- 4. Patrones Genéricos (Prioridad Baja) ---
 
     # Ej: "WIN-54FQ4PQ3M5Q" (de alertas Velocity)
     re.compile(r'\b(WIN-[\w\d]{10,})\b'),
@@ -53,6 +57,12 @@ ASSET_PATTERNS = [
 
     # Ej: "...occurred on spectrumpm3"
     re.compile(r'\b(?:on|en)\s+([a-zA-Z0-9\._-]{6,})\b', re.IGNORECASE),
+
+    # Ej: "URL_CFDI33_FACEMASNEGOCIO($HOSTIP)" -> Captura "URL_CFDI33_FACEMASNEGOCIO"
+    re.compile(r'\b(URL_[A-Z0-9_]+)\b'),
+
+    # Ej: "Punto Clave Querétaro_A (10.253.2.3)" -> Captura "10.253.2.3"
+    re.compile(r'\b((?:\d{1,3}\.){3}\d{1,3})\b')
 ]
 
 def find_asset_with_regex(text):
