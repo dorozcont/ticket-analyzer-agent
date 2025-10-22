@@ -8,6 +8,7 @@ from utils import find_asset_with_regex, get_text_for_classification
 import warnings
 import time
 import numpy as np
+import re
 
 # Suprimir advertencias futuras (limpieza de log)
 warnings.simplefilter(action='ignore', category=FutureWarning)
