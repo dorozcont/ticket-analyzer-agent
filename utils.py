@@ -2,58 +2,52 @@
 import re
 
 # Lista de patrones RegEx, ordenados de más específico a más general.
-# Son extensibles: puedes añadir más patrones según tus necesidades.
 ASSET_PATTERNS = [
-    # --- PATRONES DE MONITOREO (Site24x7, etc.) ---
+    # --- 1. Patrones Específicos (Prioridad Más Alta) ---
 
-    # 1. Captura el activo después de "Nombre: "
-    # Ej: "Estado:CRITICAL Nombre: gemweb4 Tipo de evento:SERVER"
-    # Ej: "Nombre: Oracle_psora05k_pdora10k_tbs"
+    # Ej: "PROSA T8tldm0111 (192.168.107.21)" -> Captura "T8tldm0111"
+    # ¡MOVIDA AL INICIO! Esta regla es la más fiable para este formato.
+    re.compile(r'\b([a-zA-Z0-9\._-]{5,})\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\)'), 
+
+    # Ej: "Site24x7 CRITICAL QR5-MAS-FW-01" -> Captura "QR5-MAS-FW-01"
+    re.compile(r'Site24x7\s+(?:DOWN|CRITICAL|TROUBLE|UP)\s+([a-zA-Z0-9\._/:-]+)', re.IGNORECASE),
+
+    # Ej: "URL_CFDI33_FACEMASNEGOCIO($HOSTIP)" -> Captura "URL_CFDI33_FACEMASNEGOCIO"
+    re.compile(r'\b(URL_[A-Z0-9_]+)\b'),
+
+    # Ej: "PROSA alerta de informacion Crítico para Servidor T8tldm0209"
+    re.compile(r'\b(?:Servidor|Monitor|Host):\s+([a-zA-Z0-9\._-]+)\b', re.IGNORECASE),
+
+    # Ej: "Status_DB_PDBOTOOL2_2024-01-11_08:00" -> Captura "PDBOTOOL2"
+    re.compile(r'\bStatus_DB_([a-zA-Z0-9]+)_'),
+
+    # Ej: "Name DB: PDBOECMC"
+    re.compile(r'\bName DB:\s+([a-zA-Z0-9\._-]+)\b', re.IGNORECASE),
+    
+    # Ej: "Nombre: gemweb4"
     re.compile(r'Nombre:\s+([a-zA-Z0-9\._/:-]+(?:\.[a-zA-Z]{2,})?(?:[/\w\.-]*)*)'),
 
-    # 2. Captura el activo después de "Site24x7 [ESTADO] "
-    # Ej: "Site24x7 DOWN oracle_cdb_gemrac02_CAJAHIST"
-    # Ej: "Site24x7 CRITICAL gemweb4"
-    re.compile(r'Site24x7\s+(?:DOWN|CRITICAL|TROUBLE|UP)\s+([a-zA-Z0-9\._/:-]+(?:\.[a-zA-Z]{2,})?(?:[/\w\.-]*)*)', re.IGNORECASE),
+    # --- 2. Patrones de Nomenclatura (Guiones, FQDN) ---
 
-    # --- PATRONES DE HOSTNAMES Y FQDN ---
+    # Ej: "S6509-B-CORE-SF" o "QR5-MAS-FW-01"
+    # MODIFICADA: Ahora requiere que la primera parte contenga al menos una letra.
+    # Esto evita que coincida con "2024-01-08".
+    re.compile(r'\b([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*-[a-zA-Z0-9-]{3,})\b'),
 
-    # 3. Captura FQDN (nombres de dominio completos) y URLs.
-    # Ej: "MEXZAPATATEST.fordzapata.com.mx"
-    # Ej: "sfpya.edomexico.gob.mx/recaudacion/CtrlVeh/MicRemplaca/"
-    # Ej: "MXF5_ELEM_SWCON3K01.elementia.lo_Ethernet1/51/1"
+    # Ej: FQDN como "mexzapatatest.fordzapata.com.mx"
     re.compile(r'\b([a-zA-Z0-9\._-]{4,}\.[a-zA-Z0-9\._-]+\.[a-zA-Z\.]{2,}(?:[/\w\.-]*)*)\b'),
-
-    # 4. Captura el patrón "Hostname(IP)" (incluyendo los paréntesis)
-    # Ej: "DCW8754(10.248.204.124)"
-    re.compile(r'(\b[a-zA-Z0-9\._-]{4,}\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\))'),
     
-    # 5. Captura nombres de host/servidor después de "Host:" o "Server:"
-    # Ej: "Alerta Host: abcexaprod01"
-    re.compile(r'\b(?:Host|Server):\s+([a-zA-Z0-9\._-]+)\b', re.IGNORECASE),
-    
-    # 6. Captura nombres de host/servidor que están junto a una IP (sin capturar la IP)
-    # Ej: "SvrMgMA(10.99.29.42)" -> captura "SvrMgMA"
-    re.compile(r'\b([a-zA-Z0-9\._-]{5,})\s*\(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\)'),
+    # --- 3. Patrones de Hardware y Seriales ---
+    re.compile(r'\b((?:DELL|HP|LENOVO|IMPRESORA|LAPTOP)[\w\d-]{10,})\b', re.IGNORECASE),
+    re.compile(r'\b((?:HP|DELL)\s+[A-Z0-9 ]{3,12})\b', re.IGNORECASE),
 
-    # --- PATRONES DE HARDWARE Y GENÉRICOS ---
-    
-    # 7. Captura modelos de hardware comunes
-    # Ej: "HP 840 G4", "DELL E7490"
-    re.compile(r'\b((?:HP|DELL)\s+[A-Z0-9 ]{3,12})\b'),
-
-    # 8. Nombres de activos con guiones (formato común)
-    # Ej: "QR5-MAS-FW-01"
-    re.compile(r'\b([a-zA-Z0-9]+-[a-zA-Z0-9-]{3,})\b'),
-
-    # 9. Palabras clave comunes de infraestructura (svr, host, db, oracle, etc.)
-    re.compile(r'\b([a-zA-Z0-9\._-]*?(?:svr|host|rtr|sw|fw|db|oracle|cdb)[a-zA-Z0-9\._-]*)\b', re.IGNORECASE),
-
-    # 10. Hostnames que aparecen después de 'on' o 'en'
-    # Ej: "...occurred on spectrumpm3"
+    # --- 4. Patrones Genéricos (Prioridad Baja) ---
+    re.compile(r'\b(WIN-[\w\d]{10,})\b'),
+    re.compile(r'\b([a-zA-Z]{2,}[0-9]{1,}[a-zA-Z0-9]+|[a-zA-Z]+[0-9]{1,}[a-zA-Z]{2,})[0-9]{1,}\b'),
+    re.compile(r'\b(NIMSOFT|WEBLOGIC|ORACLE|PDB[A-Z0-9]+)\b', re.IGNORECASE),
     re.compile(r'\b(?:on|en)\s+([a-zA-Z0-9\._-]{6,})\b', re.IGNORECASE),
-    
-    # 11. Direcciones IP v4 (como último recurso)
+
+    # --- 5. Patrón de Último Recurso (Captura IPs si todo lo demás falla) ---
     re.compile(r'\b((?:\d{1,3}\.){3}\d{1,3})\b')
 ]
 
@@ -69,7 +63,6 @@ def find_asset_with_regex(text):
         match = pattern.search(text)
         if match:
             # Devuelve el primer grupo capturado en la coincidencia
-            # .strip() elimina espacios en blanco al inicio o final
             return match.group(1).strip()
             
     return None # No se encontró ninguna coincidencia
