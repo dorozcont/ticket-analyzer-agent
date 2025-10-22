@@ -1,7 +1,7 @@
 # process_tickets.py
 import pandas as pd
 from transformers import pipeline
-from tqdm import tqdm  # <--- ASEGÚRATE QUE ESTÉ IMPORTADO
+from tqdm import tqdm
 import torch
 import argparse
 from utils import find_asset_with_regex, get_text_for_classification
@@ -29,51 +29,63 @@ def process_tickets_file(input_file, output_file):
     
     ticket_categories = ["Redes / Conectividad / Seguridad", "Servidores", "Aplicaciones", "Nube", "Correo"]
     
-    # --- NUEVO: Diccionario de Palabras Clave para Tipo de CI ---
+    # --- Diccionario de Palabras Clave para Tipo de CI ---
     keywords = {
         'Redes / Conectividad / Seguridad': [
-            'router', 'switch', 'firewall', 'vpn', 'wifi', 'red', 'conexión', 'conexion',
-            'internet', 'ip', 'dns', 'lan', 'wan', 'puerto', 'cable', 'conectividad',
-            'network', 'wireless', 'acceso remoto', 'proxy', 'nat', 'protocolo', 'bandwidth',
-            'latencia', 'ping', 'fibra', 'ethernet', 'routing', 'switching'
+            # Ordenar de más específico a más general
+            'acceso remoto', 'firewall', 'router', 'switch', 'vpn', 'wifi', 'conectividad',
+            'network', 'wireless', 'proxy', 'nat', 'routing', 'switching', 'bandwidth',
+            'latencia', 'ping', 'fibra', 'ethernet', 'red', 'conexión', 'conexion',
+            'internet', 'ip', 'dns', 'lan', 'wan', 'puerto', 'cable', 'protocolo'
         ],
         'Servidores': [
-            'servidor', 'windows server', 'linux', 'ubuntu', 'centos', 'vmware',
-            'hyper-v', 'esxi', 'dominio', 'active directory', 'ad', 'backup',
-            'server', 'virtual machine', 'vm', 'host', 'cluster', 'datacenter',
-            'raid', 'storage', 'san', 'nas', 'exchange server', 'sql server'
+            # Ordenar de más específico a más general
+            'windows server', 'active directory', 'exchange server', 'sql server',
+            'servidor', 'linux', 'ubuntu', 'centos', 'vmware', 'hyper-v', 'esxi', 
+            'dominio', 'ad', 'backup', 'server', 'virtual machine', 'vm', 'host', 
+            'cluster', 'datacenter', 'raid', 'storage', 'san', 'nas'
         ],
         'Nube': [
-            'azure', 'aws', 'cloud', 'nube', 'office 365', 'O365','office365','sharepoint',
-            'onedrive', 'saas', 'iaas', 'paas', 'cloud computing',
-            'amazon', 'microsoft 365', 'teams', 'cloudflare', 'google cloud',
-            'digital ocean', 'ibm cloud', 'oracle cloud'
+            'office 365', 'microsoft 365', 'google cloud', 'digital ocean', 'ibm cloud', 
+            'oracle cloud', 'azure', 'aws', 'cloud', 'nube', 'sharepoint', 'onedrive', 
+            'saas', 'iaas', 'paas', 'cloud computing', 'amazon', 'teams', 'cloudflare'
         ],
         'Correo': [
-            'outlook', 'exchange', 'email', 'correo', 'spam', 'inbox',
-            'owa', 'mail', 'bandeja', 'adjunto', 'smtp', 'pop3', 'imap',
-            'correo electrónico', 'outlook web', 'thunderbird', 'mailbox',
-            'encuesta', 'newsletter', 'mailing'
+            'correo electrónico', 'outlook web', 'exchange', 'outlook', 'email', 'correo', 
+            'spam', 'inbox', 'owa', 'mail', 'bandeja', 'adjunto', 'smtp', 'pop3', 'imap',
+            'thunderbird', 'mailbox', 'encuesta', 'newsletter', 'mailing'
         ],
         'Aplicaciones': [
-            'software', 'aplicación', 'aplicacion', 'programa', 'instalación', 'instalacion', 
-            'licencia', 'actualización', 'actualizacion', 'error', 'bug', 'crash', 'aplicativo', 'app',
-            'sistema', 'erp', 'crm', 'instalar', 'desinstalar', 'configuración', 'configuracion',
-            'java', 'python', 'php', 'html', 'css', 'javascript', 'base de datos', 'database'
+            'base de datos', 'database', 'software', 'aplicación', 'aplicacion', 'programa', 
+            'instalación', 'instalacion', 'licencia', 'actualización', 'actualizacion', 
+            'error', 'bug', 'crash', 'aplicativo', 'app', 'sistema', 'erp', 'crm', 
+            'instalar', 'desinstalar', 'configuración', 'configuracion',
+            'java', 'python', 'php', 'html', 'css', 'javascript'
         ]
     }
     
-    # --- NUEVO: Función de clasificación por keywords ---
-    def classify_ci_type(text, keywords_dict):
-        if not isinstance(text, str):
+    # --- NUEVA: Función de clasificación JERÁRQUICA por keywords ---
+    def classify_ci_type(row, keywords_dict):
+        """
+        Busca la palabra clave (hijo) basándose en la categoría (padre) ya identificada por la IA.
+        """
+        category = row['Categoria_Ticket']
+        text = row['full_text']
+        
+        if not isinstance(text, str) or category not in keywords_dict:
             return "No Identificado"
             
         text_lower = text.lower()
-        for category, keys in keywords_dict.items():
-            for key in keys:
-                # Usamos \b (límite de palabra) para evitar coincidencias parciales (ej. 'app' en 'apple')
-                if re.search(r'\b' + re.escape(key.lower()) + r'\b', text_lower):
-                    return category
+        
+        # 1. Obtener la lista de keywords específica para la categoría del ticket
+        specific_keywords = keywords_dict[category]
+        
+        # 2. Buscar la primera palabra clave que coincida
+        for key in specific_keywords:
+            # Usamos \b (límite de palabra) para evitar coincidencias parciales
+            if re.search(r'\b' + re.escape(key.lower()) + r'\b', text_lower):
+                return key  # <--- Devuelve la palabra clave específica (ej. "firewall")
+                
         return "No Identificado"
     
     # --- Fin de nuevas definiciones ---
@@ -138,15 +150,15 @@ def process_tickets_file(input_file, output_file):
     classification_results = classifier(texts_to_classify, ticket_categories, multi_label=False, batch_size=8)
     df_full['Categoria_Ticket'] = [result['labels'][0] for result in classification_results]
     
-    # --- NUEVA FASE 4: CLASIFICACIÓN DE TIPO DE CI (POR KEYWORDS) ---
-    print("\n--- Fase 4: Clasificando Tipo de CI (Keywords)... ---")
+    # --- NUEVA FASE 4: CLASIFICACIÓN DE TIPO DE CI (JERÁRQUICA) ---
+    print("\n--- Fase 4: Clasificando Tipo de CI (Keywords jerárquicas)... ---")
     
-    # Registra tqdm con pandas para usar .progress_apply()
     tqdm.pandas(desc="Clasificando Tipo de CI")
     
-    # Usamos 'full_text' que ya contiene asunto, descripción y cierre
-    df_full['Tipo_CI'] = df_full['full_text'].progress_apply(
-        lambda text: classify_ci_type(text, keywords)
+    # Usamos axis=1 para pasar la fila completa (con Categoria_Ticket y full_text)
+    df_full['Tipo_CI'] = df_full.progress_apply(
+        lambda row: classify_ci_type(row, keywords),
+        axis=1
     )
     # --- Fin de la Fase 4 ---
     
@@ -166,6 +178,6 @@ def process_tickets_file(input_file, output_file):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Procesador de Tickets de Mesa de Servicio con IA.")
     parser.add_argument("input_file", type=str, help="Ruta del archivo Excel de entrada.")
-    parser.add_argument("output_file", type=str, help="Ruta para guardar el archivo Excel procesado.")
+    parser.add.argument("output_file", type=str, help="Ruta para guardar el archivo Excel procesado.")
     args = parser.parse_args()
     process_tickets_file(args.input_file, args.output_file)
