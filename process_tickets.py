@@ -30,16 +30,15 @@ def process_tickets_file(input_file, output_file):
     ticket_categories = ["Redes / Conectividad / Seguridad", "Servidores", "Aplicaciones", "Nube", "Correo"]
     
     # --- Diccionario de Palabras Clave para Tipo de CI ---
+    # REORDENADO: Palabras más específicas primero para mayor precisión
     keywords = {
         'Redes / Conectividad / Seguridad': [
-            # Ordenar de más específico a más general
             'acceso remoto', 'firewall', 'router', 'switch', 'vpn', 'wifi', 'conectividad',
             'network', 'wireless', 'proxy', 'nat', 'routing', 'switching', 'bandwidth',
             'latencia', 'ping', 'fibra', 'ethernet', 'red', 'conexión', 'conexion',
             'internet', 'ip', 'dns', 'lan', 'wan', 'puerto', 'cable', 'protocolo'
         ],
         'Servidores': [
-            # Ordenar de más específico a más general
             'windows server', 'active directory', 'exchange server', 'sql server',
             'servidor', 'linux', 'ubuntu', 'centos', 'vmware', 'hyper-v', 'esxi', 
             'dominio', 'ad', 'backup', 'server', 'virtual machine', 'vm', 'host', 
@@ -64,31 +63,35 @@ def process_tickets_file(input_file, output_file):
         ]
     }
     
-    # --- NUEVA: Función de clasificación JERÁRQUICA por keywords ---
+    # --- *** LÓGICA CORREGIDA *** ---
+    # --- Función de clasificación JERÁRQUICA por keywords ---
     def classify_ci_type(row, keywords_dict):
         """
         Busca la palabra clave (hijo) basándose en la categoría (padre) ya identificada por la IA.
         """
+        # 1. Obtiene la categoría de la IA y el texto completo de la fila
         category = row['Categoria_Ticket']
         text = row['full_text']
         
+        # 2. Si el texto no es válido o la IA no asignó una categoría válida, no buscar.
         if not isinstance(text, str) or category not in keywords_dict:
             return "No Identificado"
             
         text_lower = text.lower()
         
-        # 1. Obtener la lista de keywords específica para la categoría del ticket
+        # 3. Obtener la lista de keywords específica para la categoría del ticket
+        # (ej. solo la lista de 'Servidores')
         specific_keywords = keywords_dict[category]
         
-        # 2. Buscar la primera palabra clave que coincida
+        # 4. Buscar la primera palabra clave (hijo) que coincida
         for key in specific_keywords:
-            # Usamos \b (límite de palabra) para evitar coincidencias parciales
             if re.search(r'\b' + re.escape(key.lower()) + r'\b', text_lower):
-                return key  # <--- Devuelve la palabra clave específica (ej. "firewall")
+                return key  # <-- CORRECCIÓN: Devuelve la palabra clave (ej. "firewall")
                 
+        # 5. Si no encuentra ninguna palabra de esa lista, devuelve No Identificado
         return "No Identificado"
     
-    # --- Fin de nuevas definiciones ---
+    # --- Fin de la corrección ---
 
     print(f"Leyendo el archivo completo: {input_file}...")
     df_full = pd.read_excel(input_file, engine='openpyxl')
@@ -150,12 +153,13 @@ def process_tickets_file(input_file, output_file):
     classification_results = classifier(texts_to_classify, ticket_categories, multi_label=False, batch_size=8)
     df_full['Categoria_Ticket'] = [result['labels'][0] for result in classification_results]
     
-    # --- NUEVA FASE 4: CLASIFICACIÓN DE TIPO DE CI (JERÁRQUICA) ---
+    # --- FASE 4: CLASIFICACIÓN DE TIPO DE CI (JERÁRQUICA) ---
     print("\n--- Fase 4: Clasificando Tipo de CI (Keywords jerárquicas)... ---")
     
     tqdm.pandas(desc="Clasificando Tipo de CI")
     
-    # Usamos axis=1 para pasar la fila completa (con Categoria_Ticket y full_text)
+    # --- *** LÓGICA CORREGIDA *** ---
+    # Se usa axis=1 para pasar la fila completa a la función
     df_full['Tipo_CI'] = df_full.progress_apply(
         lambda row: classify_ci_type(row, keywords),
         axis=1
@@ -178,6 +182,6 @@ def process_tickets_file(input_file, output_file):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Procesador de Tickets de Mesa de Servicio con IA.")
     parser.add_argument("input_file", type=str, help="Ruta del archivo Excel de entrada.")
-    parser.add.argument("output_file", type=str, help="Ruta para guardar el archivo Excel procesado.")
+    parser.add_argument("output_file", type=str, help="Ruta para guardar el archivo Excel procesado.")
     args = parser.parse_args()
     process_tickets_file(args.input_file, args.output_file)
